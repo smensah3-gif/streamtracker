@@ -1,3 +1,3 @@
-from app.api.routes import insights, platforms, watchlist
+from app.api.routes import discovery, insights, platforms, watchlist
 
-__all__ = ["platforms", "watchlist", "insights"]
+__all__ = ["platforms", "watchlist", "insights", "discovery"]

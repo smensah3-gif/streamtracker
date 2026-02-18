@@ -38,3 +38,8 @@ export const watchlistApi = {
 export const insightsApi = {
   get: () => request("/insights/"),
 };
+
+// --- Discovery ---
+export const discoveryApi = {
+  get: () => request("/discovery/"),
+};

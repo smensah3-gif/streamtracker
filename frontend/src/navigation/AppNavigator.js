@@ -3,6 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import React from "react";
 import { Text } from "react-native";
 
+import DiscoveryScreen from "../screens/DiscoveryScreen";
 import InsightsScreen from "../screens/InsightsScreen";
 import PlatformsScreen from "../screens/PlatformsScreen";
 import WatchlistScreen from "../screens/WatchlistScreen";
@@ -30,6 +31,13 @@ export default function AppNavigator() {
           tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
         }}
       >
+        <Tab.Screen
+          name="Discover"
+          component={DiscoveryScreen}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon emoji="🔍" focused={focused} />,
+          }}
+        />
         <Tab.Screen
           name="Watchlist"
           component={WatchlistScreen}
