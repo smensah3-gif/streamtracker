@@ -33,3 +33,8 @@ export const watchlistApi = {
     request(`/watchlist/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   remove: (id) => request(`/watchlist/${id}`, { method: "DELETE" }),
 };
+
+// --- Insights ---
+export const insightsApi = {
+  get: () => request("/insights/"),
+};

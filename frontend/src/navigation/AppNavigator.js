@@ -3,6 +3,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import React from "react";
 import { Text } from "react-native";
 
+import InsightsScreen from "../screens/InsightsScreen";
 import PlatformsScreen from "../screens/PlatformsScreen";
 import WatchlistScreen from "../screens/WatchlistScreen";
 
@@ -41,6 +42,13 @@ export default function AppNavigator() {
           component={PlatformsScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon emoji="📺" focused={focused} />,
+          }}
+        />
+        <Tab.Screen
+          name="Insights"
+          component={InsightsScreen}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} />,
           }}
         />
       </Tab.Navigator>
