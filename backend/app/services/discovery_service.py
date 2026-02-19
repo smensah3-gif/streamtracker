@@ -14,14 +14,14 @@ from app.schemas.discovery import (
 _HOURS = {"movie": 2.0, "show": 0.75}
 
 
-async def compute_discovery(db: AsyncSession) -> DiscoveryOut:
+async def compute_discovery(db: AsyncSession, user_id: int) -> DiscoveryOut:
     # ------------------------------------------------------------------ #
     # 1. Fetch watchlist sections
     # ------------------------------------------------------------------ #
     async def _fetch(status: str, limit: int | None = None):
         q = (
             select(WatchlistItem)
-            .where(WatchlistItem.status == status)
+            .where(WatchlistItem.user_id == user_id, WatchlistItem.status == status)
             .order_by(WatchlistItem.added_at.desc())
         )
         if limit:
@@ -41,7 +41,9 @@ async def compute_discovery(db: AsyncSession) -> DiscoveryOut:
             WatchlistItem.status,
             WatchlistItem.type,
             func.count().label("n"),
-        ).group_by(WatchlistItem.status, WatchlistItem.type)
+        )
+        .where(WatchlistItem.user_id == user_id)
+        .group_by(WatchlistItem.status, WatchlistItem.type)
     )
     rows = count_q.mappings().all()
 
@@ -54,7 +56,9 @@ async def compute_discovery(db: AsyncSession) -> DiscoveryOut:
 
     total_items = sum(counts.values())
 
-    platform_result = await db.execute(select(Platform))
+    platform_result = await db.execute(
+        select(Platform).where(Platform.user_id == user_id)
+    )
     all_platforms = list(platform_result.scalars().all())
     subscribed_count = sum(1 for p in all_platforms if p.is_subscribed)
 
@@ -77,12 +81,11 @@ async def compute_discovery(db: AsyncSession) -> DiscoveryOut:
             WatchlistItem.status,
             func.count().label("n"),
         )
-        .where(WatchlistItem.platform_name.isnot(None))
+        .where(WatchlistItem.user_id == user_id, WatchlistItem.platform_name.isnot(None))
         .group_by(func.lower(WatchlistItem.platform_name), WatchlistItem.status)
     )
     breakdown_rows = breakdown_q.mappings().all()
 
-    # Accumulate into a dict keyed by lowercase name
     pdata: dict[str, dict] = {}
     for row in breakdown_rows:
         key = row["pname"]
@@ -90,7 +93,6 @@ async def compute_discovery(db: AsyncSession) -> DiscoveryOut:
             pdata[key] = {"watched": 0, "watching": 0, "want_to_watch": 0}
         pdata[key][row["status"]] = row["n"]
 
-    # Match against Platform records for color / is_subscribed
     platform_map = {p.name.lower(): p for p in all_platforms}
 
     breakdown: list[PlatformBreakdown] = []

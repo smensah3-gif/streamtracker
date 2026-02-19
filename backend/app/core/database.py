@@ -13,7 +13,7 @@ class Base(DeclarativeBase):
 
 async def init_db():
     async with engine.begin() as conn:
-        from app.models import platform, watchlist  # noqa: F401 – registers models
+        from app.models import platform, user, watchlist  # noqa: F401 – registers models
         await conn.run_sync(Base.metadata.create_all)
 
 

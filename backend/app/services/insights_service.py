@@ -53,7 +53,7 @@ REVIEW_VALUE_MAX = 40.0  # even with lower churn risk, low value → review
 # Step 1: Fetch raw aggregates
 # ---------------------------------------------------------------------------
 
-async def _fetch_aggregates(db: AsyncSession) -> dict[str, dict[str, Any]]:
+async def _fetch_aggregates(db: AsyncSession, user_id: int) -> dict[str, dict[str, Any]]:
     """
     Query watchlist table, group by lower(platform_name), and return raw counts.
     Returns dict keyed by lowercase platform name.
@@ -69,7 +69,7 @@ async def _fetch_aggregates(db: AsyncSession) -> dict[str, dict[str, Any]]:
             func.count(case((WatchlistItem.type == "show", 1))).label("show_count"),
             func.max(WatchlistItem.added_at).label("most_recent_added"),
         )
-        .where(WatchlistItem.platform_name.isnot(None))
+        .where(WatchlistItem.user_id == user_id, WatchlistItem.platform_name.isnot(None))
         .group_by(func.lower(WatchlistItem.platform_name))
     )
     result = await db.execute(stmt)
@@ -307,12 +307,14 @@ def _generate_reason(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-async def compute_insights(db: AsyncSession) -> InsightsOut:
+async def compute_insights(db: AsyncSession, user_id: int) -> InsightsOut:
     now = datetime.now(timezone.utc)
 
-    # Fetch all platforms
+    # Fetch all platforms for this user
     from sqlalchemy import select as sa_select
-    result = await db.execute(sa_select(Platform).order_by(Platform.name))
+    result = await db.execute(
+        sa_select(Platform).where(Platform.user_id == user_id).order_by(Platform.name)
+    )
     all_platforms: list[Platform] = list(result.scalars().all())
 
     subscribed = [p for p in all_platforms if p.is_subscribed]
@@ -326,8 +328,8 @@ async def compute_insights(db: AsyncSession) -> InsightsOut:
             platform_features=[],
         )
 
-    # Fetch watchlist aggregates (all platforms, for scaler breadth)
-    aggregates = await _fetch_aggregates(db)
+    # Fetch watchlist aggregates for this user
+    aggregates = await _fetch_aggregates(db, user_id)
 
     # Build raw features for each subscribed platform
     raw_features: list[PlatformFeatures] = []
