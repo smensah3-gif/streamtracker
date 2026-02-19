@@ -4,28 +4,22 @@ import {
   FlatList,
   RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import RecommendationCard from "../components/insights/RecommendationCard";
-import { insightsApi } from "../services/api";
 
-function SummaryChip({ label, value, color }) {
-  return (
-    <View style={styles.chip}>
-      <Text style={[styles.chipValue, { color }]}>{value}</Text>
-      <Text style={styles.chipLabel}>{label}</Text>
-    </View>
-  );
-}
+import SavingsRecommendationCard from "../components/insights/SavingsRecommendationCard";
+import SpendingHeroCard from "../components/insights/SpendingHeroCard";
+import UnderutilizedCard from "../components/insights/UnderutilizedCard";
+import { insightsApi } from "../services/api";
 
 export default function InsightsScreen() {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [expandedId, setExpandedId] = useState(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -64,19 +58,54 @@ export default function InsightsScreen() {
   }
 
   const recs = insights?.recommendations ?? [];
-  const cancelCount = recs.filter((r) => r.action === "cancel").length;
-  const reviewCount = recs.filter((r) => r.action === "review").length;
-  const keepCount   = recs.filter((r) => r.action === "keep").length;
+  const features = insights?.platform_features ?? [];
+
+  // O(1) feature lookup by platform_id
+  const featuresMap = {};
+  features.forEach((f) => { featuresMap[f.platform_id] = f; });
 
   const potentialSavings = recs
     .filter((r) => r.action === "cancel")
     .reduce((sum, r) => sum + r.monthly_cost, 0);
 
+  // Underutilized = cancel/review with low engagement or long inactivity
+  const underutilized = recs.filter((r) => {
+    if (r.action === "keep") return false;
+    const f = featuresMap[r.platform_id];
+    return f && (f.engagement_rate < 0.25 || f.days_since_last_activity > 14);
+  });
+
+  const cancelRecs = recs.filter((r) => r.action === "cancel");
+  const reviewRecs = recs.filter((r) => r.action === "review");
+  const keepRecs   = recs.filter((r) => r.action === "keep");
+
+  if (recs.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView
+          contentContainerStyle={styles.emptyContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor="#cba6f7"
+            />
+          }
+        >
+          <Text style={styles.emptyTitle}>No subscriptions yet</Text>
+          <Text style={styles.emptyBody}>
+            Add platforms and mark them as subscribed to see your spending dashboard and
+            personalized recommendations.
+          </Text>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <FlatList
-        data={recs}
-        keyExtractor={(r) => String(r.platform_id)}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -84,129 +113,153 @@ export default function InsightsScreen() {
             tintColor="#cba6f7"
           />
         }
-        ListHeaderComponent={
-          <>
-            <View style={styles.header}>
-              <Text style={styles.heading}>Insights</Text>
-              {insights?.generated_at && (
-                <Text style={styles.subheading}>
-                  Updated {new Date(insights.generated_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              )}
-            </View>
-
-            {/* Summary strip */}
-            <View style={styles.summaryStrip}>
-              <SummaryChip
-                label="Monthly"
-                value={`$${(insights?.total_monthly_spend ?? 0).toFixed(2)}`}
-                color="#cba6f7"
-              />
-              <View style={styles.divider} />
-              <SummaryChip label="Keep"   value={keepCount}   color="#a6e3a1" />
-              <SummaryChip label="Review" value={reviewCount} color="#f9e2af" />
-              <SummaryChip label="Cancel" value={cancelCount} color="#f38ba8" />
-            </View>
-
-            {/* Savings banner */}
-            {potentialSavings > 0 && (
-              <View style={styles.savingsBanner}>
-                <Text style={styles.savingsLabel}>Potential savings</Text>
-                <View>
-                  <Text style={styles.savingsMonthly}>
-                    ${potentialSavings.toFixed(2)}/mo
-                  </Text>
-                  <Text style={styles.savingsAnnual}>
-                    ${(potentialSavings * 12).toFixed(2)}/year
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {/* Data coverage note */}
-            {insights?.data_coverage_note && (
-              <Text style={styles.coverageNote}>{insights.data_coverage_note}</Text>
-            )}
-
-            {recs.length === 0 && (
-              <Text style={styles.empty}>
-                No subscribed platforms yet.{"\n"}Add platforms and mark them as subscribed to see recommendations.
-              </Text>
-            )}
-          </>
-        }
-        renderItem={({ item }) => (
-          <RecommendationCard
-            recommendation={item}
-            expanded={expandedId === item.platform_id}
-            onPress={() =>
-              setExpandedId((prev) =>
-                prev === item.platform_id ? null : item.platform_id
-              )
-            }
-          />
+        contentContainerStyle={styles.scrollContent}
+      >
+        {insights?.generated_at && (
+          <Text style={styles.timestamp}>
+            Updated{" "}
+            {new Date(insights.generated_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </Text>
         )}
-        contentContainerStyle={styles.list}
-      />
+
+        {/* ── Hero spend card ── */}
+        <SpendingHeroCard
+          totalMonthly={insights?.total_monthly_spend ?? 0}
+          potentialSavings={potentialSavings}
+          platformCount={insights?.subscribed_platform_count ?? 0}
+        />
+
+        {insights?.data_coverage_note && (
+          <Text style={styles.coverageNote}>{insights.data_coverage_note}</Text>
+        )}
+
+        {/* ── Underutilized (horizontal scroll) ── */}
+        {underutilized.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Underutilized</Text>
+              <Text style={styles.sectionSubtitle}>
+                Low engagement · consider cancelling
+              </Text>
+            </View>
+            <FlatList
+              data={underutilized}
+              keyExtractor={(r) => String(r.platform_id)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.horizontalList}
+              renderItem={({ item }) => (
+                <UnderutilizedCard
+                  features={featuresMap[item.platform_id]}
+                  recommendation={item}
+                />
+              )}
+            />
+          </View>
+        )}
+
+        {/* ── Cancel to save ── */}
+        {cancelRecs.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Cancel to Save</Text>
+              <Text style={[styles.sectionSubtitle, styles.savingsSubtitle]}>
+                ${potentialSavings.toFixed(2)}/mo · ${(potentialSavings * 12).toFixed(2)}/yr
+              </Text>
+            </View>
+            <View style={styles.cardList}>
+              {cancelRecs.map((r) => (
+                <SavingsRecommendationCard key={r.platform_id} recommendation={r} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ── Worth reviewing ── */}
+        {reviewRecs.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Worth Reviewing</Text>
+              <Text style={styles.sectionSubtitle}>
+                Borderline value — usage could tip either way
+              </Text>
+            </View>
+            <View style={styles.cardList}>
+              {reviewRecs.map((r) => (
+                <SavingsRecommendationCard key={r.platform_id} recommendation={r} />
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* ── Good value / keep ── */}
+        {keepRecs.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Good Value</Text>
+              <Text style={[styles.sectionSubtitle, styles.keepSubtitle]}>
+                These are earning their keep
+              </Text>
+            </View>
+            <View style={styles.cardList}>
+              {keepRecs.map((r) => (
+                <SavingsRecommendationCard key={r.platform_id} recommendation={r} />
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#11111b" },
-  header: {
+  scrollContent: { paddingBottom: 40 },
+  timestamp: {
+    color: "#45475a",
+    fontSize: 11,
+    textAlign: "right",
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 4,
+    paddingTop: 10,
+    paddingBottom: 2,
   },
-  heading: { color: "#cdd6f4", fontSize: 26, fontWeight: "800" },
-  subheading: { color: "#6c7086", fontSize: 12, marginTop: 2 },
-  summaryStrip: {
-    flexDirection: "row",
-    marginHorizontal: 16,
-    marginVertical: 12,
-    backgroundColor: "#1e1e2e",
-    borderRadius: 12,
-    padding: 14,
-    alignItems: "center",
-    justifyContent: "space-around",
-  },
-  chip: { alignItems: "center" },
-  chipValue: { fontSize: 18, fontWeight: "800" },
-  chipLabel: { color: "#6c7086", fontSize: 11, marginTop: 2 },
-  divider: { width: 1, height: 36, backgroundColor: "#313244" },
-  savingsBanner: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginBottom: 10,
-    backgroundColor: "#1e1e2e",
-    borderRadius: 12,
-    padding: 14,
-    borderLeftWidth: 4,
-    borderLeftColor: "#a6e3a1",
-  },
-  savingsLabel: { color: "#a6adc8", fontSize: 13 },
-  savingsMonthly: { color: "#a6e3a1", fontSize: 16, fontWeight: "800", textAlign: "right" },
-  savingsAnnual: { color: "#6c7086", fontSize: 11, textAlign: "right" },
   coverageNote: {
     color: "#6c7086",
     fontSize: 12,
     marginHorizontal: 16,
-    marginBottom: 10,
+    marginTop: 10,
     fontStyle: "italic",
   },
-  list: { paddingHorizontal: 16, paddingBottom: 32 },
-  empty: {
-    color: "#6c7086",
+  section: { marginTop: 24 },
+  sectionHeader: { paddingHorizontal: 16, marginBottom: 12 },
+  sectionTitle: { color: "#cdd6f4", fontSize: 18, fontWeight: "800" },
+  sectionSubtitle: { color: "#6c7086", fontSize: 12, marginTop: 2 },
+  savingsSubtitle: { color: "#f38ba8" },
+  keepSubtitle: { color: "#a6e3a1" },
+  horizontalList: { paddingHorizontal: 16, paddingBottom: 4 },
+  cardList: { paddingHorizontal: 16 },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    color: "#cdd6f4",
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 12,
     textAlign: "center",
-    marginTop: 60,
-    fontSize: 15,
-    lineHeight: 24,
+  },
+  emptyBody: {
+    color: "#6c7086",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 22,
   },
   loadingText: {
     color: "#6c7086",
