@@ -6,39 +6,75 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
+  const [userEmail, setUserEmail] = useState(null);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    AsyncStorage.getItem("access_token").then((t) => {
-      if (t) {
-        tokenStore.set(t);
-        setToken(t);
+    (async () => {
+      const results = await AsyncStorage.multiGet(["access_token", "user_email"]);
+      const accessToken = results[0][1];
+      const storedEmail = results[1][1];
+
+      if (accessToken) {
+        tokenStore.set(accessToken);
+        setToken(accessToken);
+      }
+      if (storedEmail) {
+        setUserEmail(storedEmail);
+        const onboarded = await AsyncStorage.getItem(
+          `@streamtracker:onboarded:${storedEmail}`
+        );
+        setOnboardingComplete(onboarded === "true");
       }
       setLoading(false);
-    });
+    })();
   }, []);
 
-  const signIn = useCallback(async (accessToken, refreshToken) => {
-    await AsyncStorage.setItem("access_token", accessToken);
-    await AsyncStorage.setItem("refresh_token", refreshToken);
+  const signIn = useCallback(async (accessToken, refreshToken, email) => {
+    const pairs = [
+      ["access_token", accessToken],
+      ["refresh_token", refreshToken],
+    ];
+    if (email) pairs.push(["user_email", email]);
+    await AsyncStorage.multiSet(pairs);
+
     tokenStore.set(accessToken);
     setToken(accessToken);
+
+    if (email) {
+      setUserEmail(email);
+      const onboarded = await AsyncStorage.getItem(
+        `@streamtracker:onboarded:${email}`
+      );
+      setOnboardingComplete(onboarded === "true");
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    await AsyncStorage.multiRemove(["access_token", "refresh_token"]);
+    await AsyncStorage.multiRemove(["access_token", "refresh_token", "user_email"]);
     tokenStore.clear();
     setToken(null);
+    setUserEmail(null);
+    setOnboardingComplete(false);
   }, []);
 
-  // Wire up the global 401 handler so api.js can trigger signOut
+  const completeOnboarding = useCallback(async () => {
+    if (userEmail) {
+      await AsyncStorage.setItem(`@streamtracker:onboarded:${userEmail}`, "true");
+    }
+    setOnboardingComplete(true);
+  }, [userEmail]);
+
   useEffect(() => {
     tokenStore.setOnUnauthorized(signOut);
     return () => tokenStore.setOnUnauthorized(null);
   }, [signOut]);
 
   return (
-    <AuthContext.Provider value={{ token, loading, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ token, loading, userEmail, onboardingComplete, signIn, signOut, completeOnboarding }}
+    >
       {children}
     </AuthContext.Provider>
   );

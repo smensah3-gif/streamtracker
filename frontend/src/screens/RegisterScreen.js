@@ -44,7 +44,7 @@ export default function RegisterScreen({ onNavigateToLogin }) {
         email: email.trim().toLowerCase(),
         password,
       });
-      await signIn(access_token, refresh_token);
+      await signIn(access_token, refresh_token, email.trim().toLowerCase());
     } catch (e) {
       Alert.alert("Registration failed", e.message);
     } finally {

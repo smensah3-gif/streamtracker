@@ -4,9 +4,10 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import AuthNavigator from "./src/navigation/AuthNavigator";
 import AppNavigator from "./src/navigation/AppNavigator";
+import OnboardingNavigator from "./src/navigation/OnboardingNavigator";
 
 function RootNavigator() {
-  const { token, loading } = useAuth();
+  const { token, loading, onboardingComplete } = useAuth();
 
   if (loading) {
     return (
@@ -16,7 +17,9 @@ function RootNavigator() {
     );
   }
 
-  return token ? <AppNavigator /> : <AuthNavigator />;
+  if (!token) return <AuthNavigator />;
+  if (!onboardingComplete) return <OnboardingNavigator />;
+  return <AppNavigator />;
 }
 
 export default function App() {
